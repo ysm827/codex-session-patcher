@@ -15,10 +15,16 @@ def _load_prompt(filename: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-# ─── 从文件加载的 CTF 提示词模板 ────────────────────────────────────────────────
+# ─── 从文件加载的 CTF 提示词模板（Codex 专用）────────────────────────────────────────
 SECURITY_MODE_PROMPT = _load_prompt("ctf_private_deploy.md")
 SECURITY_MODE_PROMPT_GENERAL = _load_prompt("ctf_general.md")
 SECURITY_MODE_PROMPT_OPTIMIZED = _load_prompt("ctf_optimized.md")
+
+# ─── Claude Code 专用模板 ─────────────────────────────────────────────────────
+CLAUDE_CODE_CTF_OPTIMIZED = _load_prompt("claude_code_ctf_optimized.md")
+
+# ─── OpenCode 专用模板 ──────────────────────────────────────────────────────
+OPENCODE_CTF_OPTIMIZED = _load_prompt("opencode_ctf_optimized.md")
 
 
 # Codex config.toml 模板
@@ -43,10 +49,10 @@ BUILTIN_TEMPLATES: dict = {
         {'name': 'General Security Testing', 'prompt': SECURITY_MODE_PROMPT_GENERAL, 'file': 'ctf_general.md'},
     ],
     'claude_code': [
-        {'name': 'Optimized CTF Workflow', 'prompt': SECURITY_MODE_PROMPT_OPTIMIZED, 'default': True},
+        {'name': 'Optimized CTF Workflow', 'prompt': CLAUDE_CODE_CTF_OPTIMIZED, 'default': True},
     ],
     'opencode': [
-        {'name': 'Optimized CTF Workflow', 'prompt': SECURITY_MODE_PROMPT_OPTIMIZED, 'default': True},
+        {'name': 'Optimized CTF Workflow', 'prompt': OPENCODE_CTF_OPTIMIZED, 'default': True},
     ],
 }
 

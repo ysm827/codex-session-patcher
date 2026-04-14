@@ -86,33 +86,46 @@
               </span>
             </template>
 
-            <n-space vertical style="padding-top: 4px">
-              <n-text depth="3" style="font-size: 13px; line-height: 1.6">{{ $t('enhance.claudeDesc') }}</n-text>
-              <div class="command-hint">
-                <n-text depth="3" style="font-size: 13px">{{ $t('enhance.activationCommand') }}：</n-text>
-                <code>cd ~/.claude-ctf-workspace && claude</code>
+            <n-space vertical size="large" style="padding-top: 4px">
+              <!-- 提示词模板（最上面：先选模板再看启用） -->
+              <div class="mode-section">
+                <div class="mode-header">
+                  <n-text strong>{{ $t('enhance.editPromptShared') }}</n-text>
+                </div>
+                <n-text depth="3" style="font-size: 13px; line-height: 1.6">{{ $t('enhance.ctfTemplateDesc') }}</n-text>
+                <n-spin :show="ctfStore.prompts.claude_code.loading" style="margin-top: 8px">
+                  <div class="template-row">
+                    <n-select v-model:value="claudeSelectedTemplate" size="small" :placeholder="ctfStore.templates.claude_code.length === 0 ? $t('enhance.noTemplates') : $t('enhance.selectTemplate')" :options="templateOptions('claude_code')" :disabled="ctfStore.templates.claude_code.length === 0" :render-label="(option) => renderTemplateLabel(option, 'claude_code')" clearable style="flex: 1" @update:value="(v) => { if (v) applyTemplate('claude_code', v) }" />
+                    <n-button size="small" :disabled="ctfStore.templates.claude_code.length >= MAX_TEMPLATES" @click="openSaveTemplate('claude_code')">+ {{ $t('enhance.saveAsTemplate') }}</n-button>
+                  </div>
+                  <n-input v-model:value="claudePromptText" type="textarea" :rows="8" style="font-family: monospace; font-size: 12px" />
+                  <n-space style="margin-top: 8px" align="center">
+                    <n-button size="small" :disabled="ctfStore.prompts.claude_code.is_default" @click="handleResetPrompt('claude_code')">{{ $t('enhance.restoreDefault') }}</n-button>
+                    <n-button size="small" type="primary" @click="handleSavePrompt('claude_code', claudePromptText)">{{ $t('common.save') }}</n-button>
+                  </n-space>
+                </n-spin>
               </div>
-              <n-alert type="warning" :bordered="false">{{ $t('enhance.claudeWarning') }}</n-alert>
-              <n-space>
-                <n-button v-if="!ctfStore.status?.claude_installed" type="primary" :loading="ctfStore.claudeInstallLoading" @click="handleClaudeInstall">{{ $t('enhance.enable') }}</n-button>
-                <n-button v-else type="warning" :loading="ctfStore.claudeInstallLoading" @click="handleClaudeUninstall">{{ $t('enhance.disable') }}</n-button>
-              </n-space>
-              <n-collapse arrow-placement="left" style="margin-top: 4px">
-                <n-collapse-item :title="$t('enhance.editPrompt')" name="claude-prompt">
-                  <n-spin :show="ctfStore.prompts.claude_code.loading">
-                    <div class="template-row">
-                      <n-text depth="3" style="font-size: 13px; white-space: nowrap">{{ $t('enhance.selectTemplate') }}：</n-text>
-                      <n-select v-model:value="claudeSelectedTemplate" size="small" :placeholder="ctfStore.templates.claude_code.length === 0 ? $t('enhance.noTemplates') : $t('enhance.selectTemplate')" :options="templateOptions('claude_code')" :disabled="ctfStore.templates.claude_code.length === 0" :render-label="(option) => renderTemplateLabel(option, 'claude_code')" clearable style="flex: 1" @update:value="(v) => { if (v) applyTemplate('claude_code', v) }" />
-                      <n-button size="small" :disabled="ctfStore.templates.claude_code.length >= MAX_TEMPLATES" @click="openSaveTemplate('claude_code')">+ {{ $t('enhance.saveAsTemplate') }}</n-button>
-                    </div>
-                    <n-input v-model:value="claudePromptText" type="textarea" :rows="12" style="font-family: monospace; font-size: 12px" />
-                    <n-space style="margin-top: 8px" align="center">
-                      <n-button size="small" :disabled="ctfStore.prompts.claude_code.is_default" @click="handleResetPrompt('claude_code')">{{ $t('enhance.restoreDefault') }}</n-button>
-                      <n-button size="small" type="primary" @click="handleSavePrompt('claude_code', claudePromptText)">{{ $t('common.save') }}</n-button>
-                    </n-space>
-                  </n-spin>
-                </n-collapse-item>
-              </n-collapse>
+
+              <n-divider style="margin: 4px 0" />
+
+              <!-- CTF/渗透模式启用 -->
+              <div class="mode-section">
+                <div class="mode-header">
+                  <n-text strong>{{ $t('enhance.ctfMode') }}</n-text>
+                  <n-tag :type="ctfStore.status?.claude_installed ? 'success' : 'default'" size="small" :bordered="false">
+                    {{ ctfStore.status?.claude_installed ? $t('common.enabled') : $t('common.disabled') }}
+                  </n-tag>
+                </div>
+                <n-text depth="3" style="font-size: 13px; line-height: 1.6">{{ $t('enhance.claudeDesc') }}</n-text>
+                <n-alert type="warning" :bordered="false" style="margin-top: 4px">{{ $t('enhance.claudeWarning') }}</n-alert>
+                <div style="margin-top: 8px">
+                  <n-button v-if="!ctfStore.status?.claude_installed" type="primary" size="small" :loading="ctfStore.claudeInstallLoading" @click="handleClaudeInstall">{{ $t('enhance.enable') }}</n-button>
+                  <n-button v-else type="warning" size="small" :loading="ctfStore.claudeInstallLoading" @click="handleClaudeUninstall">{{ $t('enhance.disable') }}</n-button>
+                </div>
+                <p v-if="ctfStore.status?.claude_installed" class="command-inline-hint">
+                  {{ $t('enhance.activationCommand') }}：<code>cd ~/.claude-ctf-workspace && claude</code>
+                </p>
+              </div>
             </n-space>
           </n-tab-pane>
 
@@ -125,33 +138,46 @@
               </span>
             </template>
 
-            <n-space vertical style="padding-top: 4px">
-              <n-text depth="3" style="font-size: 13px; line-height: 1.6">{{ $t('enhance.opencodeDesc') }}</n-text>
-              <div class="command-hint">
-                <n-text depth="3" style="font-size: 13px">{{ $t('enhance.activationCommand') }}：</n-text>
-                <code>cd ~/.opencode-ctf-workspace && opencode</code>
+            <n-space vertical size="large" style="padding-top: 4px">
+              <!-- 提示词模板（最上面：先选模板再看启用） -->
+              <div class="mode-section">
+                <div class="mode-header">
+                  <n-text strong>{{ $t('enhance.editPromptShared') }}</n-text>
+                </div>
+                <n-text depth="3" style="font-size: 13px; line-height: 1.6">{{ $t('enhance.ctfTemplateDesc') }}</n-text>
+                <n-spin :show="ctfStore.prompts.opencode.loading" style="margin-top: 8px">
+                  <div class="template-row">
+                    <n-select v-model:value="opencodeSelectedTemplate" size="small" :placeholder="ctfStore.templates.opencode.length === 0 ? $t('enhance.noTemplates') : $t('enhance.selectTemplate')" :options="templateOptions('opencode')" :disabled="ctfStore.templates.opencode.length === 0" :render-label="(option) => renderTemplateLabel(option, 'opencode')" clearable style="flex: 1" @update:value="(v) => { if (v) applyTemplate('opencode', v) }" />
+                    <n-button size="small" :disabled="ctfStore.templates.opencode.length >= MAX_TEMPLATES" @click="openSaveTemplate('opencode')">+ {{ $t('enhance.saveAsTemplate') }}</n-button>
+                  </div>
+                  <n-input v-model:value="opencodePromptText" type="textarea" :rows="8" style="font-family: monospace; font-size: 12px" />
+                  <n-space style="margin-top: 8px" align="center">
+                    <n-button size="small" :disabled="ctfStore.prompts.opencode.is_default" @click="handleResetPrompt('opencode')">{{ $t('enhance.restoreDefault') }}</n-button>
+                    <n-button size="small" type="primary" @click="handleSavePrompt('opencode', opencodePromptText)">{{ $t('common.save') }}</n-button>
+                  </n-space>
+                </n-spin>
               </div>
-              <n-alert type="warning" :bordered="false">{{ $t('enhance.opencodeWarning') }}</n-alert>
-              <n-space>
-                <n-button v-if="!ctfStore.status?.opencode_installed" type="primary" :loading="ctfStore.opencodeInstallLoading" @click="handleOpencodeInstall">{{ $t('enhance.enable') }}</n-button>
-                <n-button v-else type="warning" :loading="ctfStore.opencodeInstallLoading" @click="handleOpencodeUninstall">{{ $t('enhance.disable') }}</n-button>
-              </n-space>
-              <n-collapse arrow-placement="left" style="margin-top: 4px">
-                <n-collapse-item :title="$t('enhance.editPrompt')" name="opencode-prompt">
-                  <n-spin :show="ctfStore.prompts.opencode.loading">
-                    <div class="template-row">
-                      <n-text depth="3" style="font-size: 13px; white-space: nowrap">{{ $t('enhance.selectTemplate') }}：</n-text>
-                      <n-select v-model:value="opencodeSelectedTemplate" size="small" :placeholder="ctfStore.templates.opencode.length === 0 ? $t('enhance.noTemplates') : $t('enhance.selectTemplate')" :options="templateOptions('opencode')" :disabled="ctfStore.templates.opencode.length === 0" :render-label="(option) => renderTemplateLabel(option, 'opencode')" clearable style="flex: 1" @update:value="(v) => { if (v) applyTemplate('opencode', v) }" />
-                      <n-button size="small" :disabled="ctfStore.templates.opencode.length >= MAX_TEMPLATES" @click="openSaveTemplate('opencode')">+ {{ $t('enhance.saveAsTemplate') }}</n-button>
-                    </div>
-                    <n-input v-model:value="opencodePromptText" type="textarea" :rows="12" style="font-family: monospace; font-size: 12px" />
-                    <n-space style="margin-top: 8px" align="center">
-                      <n-button size="small" :disabled="ctfStore.prompts.opencode.is_default" @click="handleResetPrompt('opencode')">{{ $t('enhance.restoreDefault') }}</n-button>
-                      <n-button size="small" type="primary" @click="handleSavePrompt('opencode', opencodePromptText)">{{ $t('common.save') }}</n-button>
-                    </n-space>
-                  </n-spin>
-                </n-collapse-item>
-              </n-collapse>
+
+              <n-divider style="margin: 4px 0" />
+
+              <!-- CTF/渗透模式启用 -->
+              <div class="mode-section">
+                <div class="mode-header">
+                  <n-text strong>{{ $t('enhance.ctfMode') }}</n-text>
+                  <n-tag :type="ctfStore.status?.opencode_installed ? 'success' : 'default'" size="small" :bordered="false">
+                    {{ ctfStore.status?.opencode_installed ? $t('common.enabled') : $t('common.disabled') }}
+                  </n-tag>
+                </div>
+                <n-text depth="3" style="font-size: 13px; line-height: 1.6">{{ $t('enhance.opencodeDesc') }}</n-text>
+                <n-alert type="warning" :bordered="false" style="margin-top: 4px">{{ $t('enhance.opencodeWarning') }}</n-alert>
+                <div style="margin-top: 8px">
+                  <n-button v-if="!ctfStore.status?.opencode_installed" type="primary" size="small" :loading="ctfStore.opencodeInstallLoading" @click="handleOpencodeInstall">{{ $t('enhance.enable') }}</n-button>
+                  <n-button v-else type="warning" size="small" :loading="ctfStore.opencodeInstallLoading" @click="handleOpencodeUninstall">{{ $t('enhance.disable') }}</n-button>
+                </div>
+                <p v-if="ctfStore.status?.opencode_installed" class="command-inline-hint">
+                  {{ $t('enhance.activationCommand') }}：<code>cd ~/.opencode-ctf-workspace && opencode</code>
+                </p>
+              </div>
             </n-space>
           </n-tab-pane>
 
