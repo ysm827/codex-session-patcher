@@ -19,6 +19,15 @@
             <span class="title">Codex Session Patcher</span>
           </div>
           <div class="header-right">
+            <n-tooltip v-if="appVersion" trigger="hover" placement="bottom">
+              <template #trigger>
+                <a href="https://github.com/ryfineZ/codex-session-patcher" target="_blank" class="version-link" aria-label="Version">
+                  v{{ appVersion }}
+                </a>
+              </template>
+              {{ $t('common.version') }}
+            </n-tooltip>
+
             <!-- GitHub -->
             <n-tooltip trigger="hover" placement="bottom">
               <template #trigger>
@@ -175,6 +184,7 @@ import { useSessionStore } from './stores/sessionStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useLogStore } from './stores/logStore'
 import { useLocaleStore } from './stores/localeStore'
+import { api } from './services/api'
 
 const { t } = useI18n()
 const activeTab = ref('enhance')
@@ -184,6 +194,7 @@ const showSponsor = ref(false)
 const sponsorTab = ref('wechat')
 const previewPanelRef = ref(null)
 const cleanReasoning = ref(true)  // 是否清理推理内容
+const appVersion = ref('')
 
 async function copyWalletAddr() {
   try {
@@ -222,8 +233,18 @@ const checkMobile = () => {
   }
 }
 
+async function loadAppVersion() {
+  try {
+    const result = await api.get('/version')
+    appVersion.value = result.version || ''
+  } catch {
+    appVersion.value = ''
+  }
+}
+
 onMounted(() => {
   checkMobile()
+  loadAppVersion()
   window.addEventListener('resize', checkMobile)
 })
 
@@ -325,8 +346,8 @@ onUnmounted(() => {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  color: var(--n-text-color-3, #888);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-3);
   background: none;
   border: none;
   cursor: pointer;
@@ -335,8 +356,27 @@ onUnmounted(() => {
   transition: color 0.2s, background 0.2s;
 }
 .social-link:hover {
-  color: var(--n-text-color-1, #fff);
-  background: rgba(255,255,255,0.08);
+  color: var(--color-text-1);
+  background: var(--color-bg-3);
+}
+
+.version-link {
+  color: var(--color-primary-hover);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  padding: 5px 8px;
+  border: 1px solid var(--color-primary-pressed);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+
+.version-link:hover {
+  color: var(--color-text-1);
+  border-color: var(--color-primary-hover);
+  background: var(--color-primary-pressed);
 }
 
 .sponsor-btn {
@@ -420,7 +460,7 @@ onUnmounted(() => {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--color-overlay);
     z-index: 99;
   }
 }

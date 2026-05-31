@@ -34,6 +34,7 @@ AI coding tools (Codex, Claude Code, OpenCode) frequently refuse security-relate
 ### Session Cleaning
 - **Smart Detection** — Two-level refusal detection (strong phrase full-text match + weak keyword prefix match), low false positive rate
 - **AI Rewrite** — Call LLM to generate context-aware replacement responses (supports OpenAI / Ollama / OpenRouter compatible APIs)
+- **Safe Fallbacks** — Clean historical Codex refusals that only contain `event_msg`; fall back to a safe default when AI returns question-mark mojibake
 - **Batch Cleaning** — Process all refusal responses in a session, not just the last one
 - **Reasoning Erasure** — Remove encrypted Reasoning / Thinking block content
 - **Backup & Restore** — Auto-backup before cleaning, one-click restore to any historical version
@@ -75,6 +76,7 @@ cd codex-session-patcher
 
 The Web UI launchers `./scripts/start-web.sh` and `./scripts/dev-web.sh` also auto-detect a compatible Python 3.8+ interpreter, first trying generic launchers from the current environment such as `python3` or `python`, then falling back to versioned commands or `py -3`, and only install/build when dependencies or frontend assets are actually out of date.
 If you really need a manual editable install, run `-m pip install -e ...` with whatever Python 3.8+ launcher already exists on your machine; on Windows that is often `py -3`, while other environments may use `python3.12`, `python3`, or `python`.
+On Windows Git Bash / MSYS / MINGW / Cygwin, the project launch scripts automatically set `PYTHONIOENCODING=utf-8` for Python child processes to reduce question-mark mojibake from GBK console encoding in local AI proxies or the Web backend.
 
 ---
 
@@ -163,6 +165,7 @@ codex-patcher --rewrite "Help me write a reverse analysis script"
 | `--host` | Web UI listen address (default 127.0.0.1) |
 | `--port` | Web UI port (default 8080) |
 | `--install-ctf-config` | Install Codex CTF config |
+| `--ctf-injection-mode append\|replace` | Choose Codex injection mode, defaults to append |
 | `--uninstall-ctf-config` | Uninstall Codex CTF config |
 | `--install-claude-ctf` | Install Claude Code CTF config |
 | `--uninstall-claude-ctf` | Uninstall Claude Code CTF config |
@@ -181,6 +184,9 @@ codex-patcher --rewrite "Help me write a reverse analysis script"
 1. Install CTF Profile
    codex-patcher --install-ctf-config
 
+   # Strong CTF scenarios can replace Codex built-in instructions
+   codex-patcher --install-ctf-config --ctf-injection-mode replace
+
 2. Launch with CTF profile (doesn't affect normal sessions)
    codex -p ctf
 
@@ -195,7 +201,16 @@ The installer writes the new Codex profile file:
 - macOS/Linux: `~/.codex/ctf.config.toml`
 - Windows: `%USERPROFILE%\.codex\ctf.config.toml`
 
-To support Codex CLI 0.134.0 and newer, install removes legacy `profile = "ctf"`, `[profiles.ctf]`, and `[profiles.ctf.*]` entries from `config.toml`, preventing `codex -p ctf` from failing with a legacy profile error. Profile mode and global mode both use `developer_instructions` to append security-testing guidance without replacing Codex built-in instructions. Disabling global mode removes the marker and settings managed by this tool.
+To support Codex CLI 0.134.0 and newer, install removes legacy `profile = "ctf"`, `[profiles.ctf]`, and `[profiles.ctf.*]` entries from `config.toml`, preventing `codex -p ctf` from failing with a legacy profile error. Profile mode and global mode both support appending rules or replacing Codex built-in instructions. Disabling global mode removes the marker and settings managed by this tool.
+
+Codex supports two injection modes:
+
+- Append rules by default: writes `developer_instructions`, preserving Codex built-in instructions. Use this for daily security testing.
+- Replace built-in instructions: writes `model_instructions_file` pointing at the prompt file. Use this for strong CTF scenarios; it takes over Codex built-in instructions.
+
+The two modes are mutually exclusive. The Web UI lets you choose the injection mode when enabling Profile or Global mode; the CLI supports `--ctf-injection-mode append|replace`.
+
+Global mode only manages the block marked with `# __csp_ctf_global__`. If `config.toml` already has a user-managed top-level `developer_instructions` or `model_instructions_file`, the installer refuses to enable global mode to avoid overwriting user settings or creating duplicate keys. Remove or migrate the existing top-level instruction setting first.
 
 ### Claude Code
 

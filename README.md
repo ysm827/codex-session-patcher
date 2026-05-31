@@ -34,6 +34,7 @@
 ### 会话清理
 - **智能检测** — 两级拒绝检测策略（强短语全文匹配 + 弱关键词开头匹配），低误报率
 - **AI 智能改写** — 调用 LLM 根据对话上下文生成符合语境的替换回复（支持 OpenAI / Ollama / OpenRouter 等兼容接口）
+- **安全兜底** — 可清理只有 `event_msg` 的历史 Codex 拒绝记录；AI 返回问号乱码时自动回退到安全默认文本
 - **批量清理** — 处理会话中所有拒绝回复，而非仅最后一条
 - **推理内容擦除** — 删除 Reasoning / Thinking block 加密推理内容
 - **备份还原** — 清理前自动备份，支持一键还原到任意历史版本
@@ -75,6 +76,7 @@ cd codex-session-patcher
 
 Web UI 的 `./scripts/start-web.sh` 和 `./scripts/dev-web.sh` 也会自动探测可用的 Python 3.8+ 解释器，优先尝试当前环境里的通用启动命令（如 `python3` / `python`），再回退到版本化命令或 `py -3`，并且只在依赖缺失或源码变更时才执行安装 / 构建。
 如果你确实需要手动安装 editable 包，再使用你机器上已有的 Python 3.8+ 启动命令执行 `-m pip install -e ...`；Windows 常见的是 `py -3`，其他环境可能是 `python3.12`、`python3` 或 `python`。
+在 Windows 的 Git Bash / MSYS / MINGW / Cygwin 环境中，项目启动脚本会自动为 Python 子进程设置 `PYTHONIOENCODING=utf-8`，减少本地 AI 代理或 Web 后端因 GBK 控制台导致中文变成问号串的概率。
 
 ---
 
@@ -163,6 +165,7 @@ codex-patcher --rewrite "帮我写一个逆向分析脚本"
 | `--host` | Web UI 监听地址（默认 127.0.0.1） |
 | `--port` | Web UI 端口（默认 8080） |
 | `--install-ctf-config` | 安装 Codex CTF 配置 |
+| `--ctf-injection-mode append\|replace` | 选择 Codex 注入方式，默认追加规则 |
 | `--uninstall-ctf-config` | 卸载 Codex CTF 配置 |
 | `--install-claude-ctf` | 安装 Claude Code CTF 配置 |
 | `--uninstall-claude-ctf` | 卸载 Claude Code CTF 配置 |
@@ -181,6 +184,9 @@ codex-patcher --rewrite "帮我写一个逆向分析脚本"
 1. 安装 CTF Profile
    codex-patcher --install-ctf-config
 
+   # 强 CTF 场景可选择替换 Codex 内置提示词
+   codex-patcher --install-ctf-config --ctf-injection-mode replace
+
 2. 使用 CTF Profile 启动（不影响普通会话）
    codex -p ctf
 
@@ -195,7 +201,16 @@ codex-patcher --rewrite "帮我写一个逆向分析脚本"
 - macOS/Linux: `~/.codex/ctf.config.toml`
 - Windows: `%USERPROFILE%\.codex\ctf.config.toml`
 
-为兼容 Codex CLI 0.134.0 及以后版本，安装时会从 `config.toml` 清理旧格式 `profile = "ctf"`、`[profiles.ctf]` 和 `[profiles.ctf.*]`，避免 `codex -p ctf` 启动时报 legacy profile 错误。Profile 模式和全局模式都使用 `developer_instructions` 追加安全测试规则，不替换 Codex 内置提示词；禁用全局模式会移除本工具写入的标记和配置。
+为兼容 Codex CLI 0.134.0 及以后版本，安装时会从 `config.toml` 清理旧格式 `profile = "ctf"`、`[profiles.ctf]` 和 `[profiles.ctf.*]`，避免 `codex -p ctf` 启动时报 legacy profile 错误。Profile 模式和全局模式都支持追加规则或替换内置提示词；禁用全局模式会移除本工具写入的标记和配置。
+
+Codex 提供两种注入方式：
+
+- 默认追加规则：写入 `developer_instructions`，保留 Codex 内置提示词，适合日常安全测试。
+- 替换内置提示词：写入 `model_instructions_file` 指向提示词文件，适合强 CTF 场景，但会接管 Codex 原本的内置提示词。
+
+两种方式互斥。通过 Web UI 启用 Profile 或全局模式时可选择注入方式；CLI 可用 `--ctf-injection-mode append|replace`。
+
+全局模式只管理带有 `# __csp_ctf_global__` 标记的配置块。如果 `config.toml` 顶层已经存在用户自己写的 `developer_instructions` 或 `model_instructions_file`，安装器会拒绝启用全局模式，避免覆盖用户配置或生成重复 key；请先手动迁移或删除原有顶层提示词配置。
 
 ### Claude Code
 

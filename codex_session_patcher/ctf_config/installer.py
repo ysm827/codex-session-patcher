@@ -26,6 +26,8 @@ class CTFConfigInstaller:
     """CTF 配置安装器"""
 
     DEFAULT_PROMPT_FILE = "ctf_optimized.md"
+    INJECTION_MODE_APPEND = "append"
+    INJECTION_MODE_REPLACE = "replace"
 
     def __init__(self):
         self.codex_dir = os.path.expanduser("~/.codex")
@@ -59,17 +61,26 @@ class CTFConfigInstaller:
                 return tpl['prompt']
         return BUILTIN_TEMPLATES['codex'][0]['prompt']
 
-    def install(self, custom_prompt: str = None) -> tuple[bool, str]:
+    def _normalize_injection_mode(self, injection_mode: Optional[str]) -> str:
+        """归一化 Codex 提示词注入模式。"""
+        mode = injection_mode or self.INJECTION_MODE_APPEND
+        if mode not in {self.INJECTION_MODE_APPEND, self.INJECTION_MODE_REPLACE}:
+            raise ValueError("injection_mode 只支持 append 或 replace")
+        return mode
+
+    def install(self, custom_prompt: str = None, injection_mode: str = INJECTION_MODE_APPEND) -> tuple[bool, str]:
         """
         安装 Profile 模式（自动禁用 Global 模式）
 
         Args:
             custom_prompt: 自定义提示词内容，为 None 时从配置/默认模板读取
+            injection_mode: append 表示追加 developer_instructions；replace 表示替换内置提示词
 
         Returns:
             tuple[bool, str]: (是否成功, 消息)
         """
         try:
+            injection_mode = self._normalize_injection_mode(injection_mode)
             details = []
 
             # 1. 先禁用 Global 模式（如果已启用）
@@ -103,7 +114,7 @@ class CTFConfigInstaller:
                 f.write(prompt_content)
 
             # 6. 写入新版 profile 配置，并清理旧版 profile 配置
-            profile_added = self._update_config(prompt_content)
+            profile_added = self._update_config(prompt_content, prompt_file, injection_mode)
 
             # 构建详细消息
             details.append(f"✓ 已创建安全测试提示词: {prompt_path}")
@@ -113,6 +124,10 @@ class CTFConfigInstaller:
                 details.append(f"✓ 已创建 ctf profile 配置: {self.profile_config_path}")
             else:
                 details.append(f"✓ 已更新 ctf profile 配置: {self.profile_config_path}")
+            if injection_mode == self.INJECTION_MODE_APPEND:
+                details.append("✓ 注入方式: 追加规则（developer_instructions）")
+            else:
+                details.append("✓ 注入方式: 替换内置提示词（model_instructions_file）")
             details.append("使用 'codex -p ctf' 启动安全测试会话")
 
             return True, "\n".join(details)
@@ -169,21 +184,33 @@ class CTFConfigInstaller:
         except Exception:
             return None
 
-    def _update_config(self, prompt_content: str = None) -> bool:
+    def _update_config(
+        self,
+        prompt_content: str = None,
+        prompt_file: str = None,
+        injection_mode: str = INJECTION_MODE_APPEND,
+    ) -> bool:
         """更新新版 CTF profile 配置，并清理旧版 profile 配置
 
         Args:
-            prompt_content: developer_instructions 内容
+            prompt_content: 提示词内容
+            prompt_file: prompt 文件名
+            injection_mode: append 或 replace
 
         Returns:
             bool: 是否添加了新的 profile 文件（False 表示更新已有文件）
         """
+        injection_mode = self._normalize_injection_mode(injection_mode)
         instructions = prompt_content or self._get_prompt_content()
+        filename = prompt_file or self._get_prompt_file()
         profile_added = not os.path.exists(self.profile_config_path)
 
         os.makedirs(self.codex_dir, exist_ok=True)
         profile_content = self._read_profile_config_source(instructions)
-        profile_content = self._upsert_developer_instructions(profile_content, instructions)
+        if injection_mode == self.INJECTION_MODE_APPEND:
+            profile_content = self._upsert_developer_instructions(profile_content, instructions)
+        else:
+            profile_content = self._upsert_model_instructions_file(profile_content, filename)
         with open(self.profile_config_path, 'w', encoding='utf-8') as f:
             f.write(profile_content)
 
@@ -304,6 +331,62 @@ class CTFConfigInstaller:
 
         return profile_content
 
+    def _upsert_model_instructions_file(self, content: str, prompt_file: str) -> str:
+        """只更新 profile 顶层 model_instructions_file，保留其他设置。"""
+        target_line = f'model_instructions_file = "~/.codex/prompts/{prompt_file}"\n'
+        lines = content.splitlines(keepends=True)
+        if not lines:
+            return '# Codex CTF profile managed by codex-session-patcher\n' + target_line
+
+        section_start = len(lines)
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith('[') and not stripped.startswith('#'):
+                section_start = index
+                break
+
+        top_level = lines[:section_start]
+        rest = lines[section_start:]
+        new_top_level = []
+        inserted = False
+        index = 0
+
+        while index < len(top_level):
+            line = top_level[index]
+
+            if re.match(r'^\s*model_instructions_file\s*=', line):
+                if not inserted:
+                    new_top_level.append(target_line)
+                    inserted = True
+                index += 1
+                continue
+
+            if re.match(r'^\s*developer_instructions\s*=', line):
+                index += 1
+                if '"""' in line:
+                    quote_count = line.count('"""')
+                    while quote_count < 2 and index < len(top_level):
+                        quote_count += top_level[index].count('"""')
+                        index += 1
+                continue
+
+            new_top_level.append(line)
+            index += 1
+
+        if not inserted:
+            if new_top_level and not new_top_level[-1].endswith('\n'):
+                new_top_level[-1] += '\n'
+            new_top_level.append(target_line)
+
+        if rest and new_top_level and new_top_level[-1].strip():
+            new_top_level.append('\n')
+
+        profile_content = ''.join(new_top_level + rest)
+        if not profile_content.endswith('\n'):
+            profile_content += '\n'
+
+        return profile_content
+
     def _escape_multiline_basic_string(self, value: str) -> str:
         """转义 TOML 多行 basic string 不能直接承载的字符。"""
         return value.replace('\\', '\\\\').replace('"""', '\\"\\"\\"')
@@ -372,41 +455,55 @@ class CTFConfigInstaller:
 
         return removed
 
-    def install_global(self) -> tuple[bool, str]:
+    def install_global(self, injection_mode: str = INJECTION_MODE_APPEND) -> tuple[bool, str]:
         """
-        全局模式安装：在 config.toml 顶层注入 developer_instructions
+        全局模式安装：在 config.toml 顶层注入 Codex CTF 提示词配置
         自动禁用 Profile 模式
 
         Returns:
             tuple[bool, str]: (是否成功, 消息)
         """
         try:
+            injection_mode = self._normalize_injection_mode(injection_mode)
             details = []
 
-            # 1. 确定模板内容
+            # 1. 先检查用户手写的顶层提示词配置，避免生成重复 key。
+            existing_content = ""
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    existing_content = f.read()
+            existing_lines = existing_content.split('\n') if existing_content else []
+            unmanaged_key = self._find_unmanaged_top_level_instruction_key(existing_lines)
+            if unmanaged_key:
+                return False, (
+                    f"全局模式安装失败: config.toml 顶层已有 {unmanaged_key}。"
+                    "为避免覆盖你的配置或生成重复 key，请先手动迁移或删除该配置。"
+                )
+
+            # 2. 确定模板内容
             prompt_file = self._get_prompt_file()
             prompt_path = os.path.join(self.prompts_dir, prompt_file)
 
-            # 2. 先卸载 Profile 模式，包括旧版 [profiles.ctf] 写法
+            # 3. 先卸载 Profile 模式，包括旧版 [profiles.ctf] 写法
             removed = self._remove_ctf_profile()
             if removed:
                 details.append("✓ 已自动禁用 Profile 模式")
 
-            # 3. 确保 prompts 目录存在，写入 prompt 文件
+            # 4. 确保 prompts 目录存在，写入 prompt 文件
             os.makedirs(self.prompts_dir, exist_ok=True)
             prompt_content = self._get_prompt_content()
             with open(prompt_path, 'w', encoding='utf-8') as f:
                 f.write(prompt_content)
             details.append(f"✓ 已写入安全测试提示词: {prompt_path}")
 
-            # 3. 备份 config.toml
+            # 5. 备份 config.toml
             backup_path = None
             if os.path.exists(self.config_path):
                 backup_path = self._backup_config()
                 if backup_path:
                     details.append(f"✓ 已备份原配置到: {backup_path}")
 
-            # 4. 读取现有配置
+            # 6. 读取现有配置
             existing_content = ""
             if os.path.exists(self.config_path):
                 with open(self.config_path, 'r', encoding='utf-8') as f:
@@ -414,12 +511,16 @@ class CTFConfigInstaller:
 
             lines = existing_content.split('\n') if existing_content else []
 
-            # 6. 更新或插入受管理的 developer_instructions 配置
+            # 7. 更新或插入受管理的提示词配置
             lines = self._remove_global_managed_block(lines)
-            lines = self._insert_global_managed_block(lines, prompt_content)
+            lines = self._insert_global_managed_block(lines, prompt_content, prompt_file, injection_mode)
             details.append("✓ 已注入全局配置")
+            if injection_mode == self.INJECTION_MODE_APPEND:
+                details.append("✓ 注入方式: 追加规则（developer_instructions）")
+            else:
+                details.append("✓ 注入方式: 替换内置提示词（model_instructions_file）")
 
-            # 7. 写入配置
+            # 8. 写入配置
             new_content = '\n'.join(lines)
             new_content = new_content.strip() + '\n'
 
@@ -435,6 +536,21 @@ class CTFConfigInstaller:
 
         except Exception as e:
             return False, f"全局模式安装失败: {str(e)}"
+
+    def _find_unmanaged_top_level_instruction_key(self, lines: list[str]) -> Optional[str]:
+        """查找非本工具管理的顶层提示词配置。"""
+        unmanaged_lines = self._remove_global_managed_block(lines)
+        for line in unmanaged_lines:
+            stripped = line.strip()
+            if stripped.startswith('[') and not stripped.startswith('#'):
+                return None
+            if not stripped or stripped.startswith('#'):
+                continue
+            if re.match(r'^developer_instructions\s*=', stripped):
+                return "developer_instructions"
+            if re.match(r'^model_instructions_file\s*=', stripped):
+                return "model_instructions_file"
+        return None
 
     def uninstall_global(self) -> tuple[bool, str]:
         """
@@ -471,8 +587,14 @@ class CTFConfigInstaller:
         except Exception as e:
             return False, f"全局模式卸载失败: {str(e)}"
 
-    def _update_global_config(self, prompt_content: str) -> bool:
-        """更新已启用全局模式中的 developer_instructions。"""
+    def _update_global_config(
+        self,
+        prompt_content: str,
+        prompt_file: str = None,
+        injection_mode: str = INJECTION_MODE_APPEND,
+    ) -> bool:
+        """更新已启用全局模式中的提示词配置。"""
+        injection_mode = self._normalize_injection_mode(injection_mode)
         if not os.path.exists(self.config_path):
             return False
 
@@ -484,21 +606,38 @@ class CTFConfigInstaller:
         if not found:
             return False
 
-        lines = self._insert_global_managed_block(lines, prompt_content)
+        lines = self._insert_global_managed_block(
+            lines,
+            prompt_content,
+            prompt_file or self._get_prompt_file(),
+            injection_mode,
+        )
         new_content = '\n'.join(lines).strip() + '\n'
         with open(self.config_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
 
         return True
 
-    def _insert_global_managed_block(self, lines: list[str], prompt_content: str) -> list[str]:
+    def _insert_global_managed_block(
+        self,
+        lines: list[str],
+        prompt_content: str,
+        prompt_file: str,
+        injection_mode: str,
+    ) -> list[str]:
         """在第一个 section 前插入全局模式受管理配置块。"""
-        target_lines = [
-            f'{GLOBAL_MARKER} 安全测试模式（由 codex-session-patcher 管理）',
-            'developer_instructions = """',
-            self._escape_multiline_basic_string(prompt_content),
-            '"""',
-        ]
+        if injection_mode == self.INJECTION_MODE_APPEND:
+            target_lines = [
+                f'{GLOBAL_MARKER} 安全测试模式（由 codex-session-patcher 管理）',
+                'developer_instructions = """',
+                self._escape_multiline_basic_string(prompt_content),
+                '"""',
+            ]
+        else:
+            target_lines = [
+                f'{GLOBAL_MARKER} 安全测试模式（由 codex-session-patcher 管理）',
+                f'model_instructions_file = "~/.codex/prompts/{prompt_file}"',
+            ]
 
         insert_idx = 0
         for i, line in enumerate(lines):

@@ -39,6 +39,10 @@
 | 备份管理器 | 创建和管理备份文件 | `BackupManager` |
 | 文件写入器 | 安全写入修改后的文件 | `FileWriter` |
 
+### 1.3 Web 顶部状态
+
+Web UI 顶部右侧显示当前应用版本号，版本号来自 Python 包的 `codex_session_patcher.__version__`。版本号仅作为只读状态展示，不做自动更新检测；点击版本号或 GitHub 图标均打开项目仓库。
+
 ## 2. 数据结构设计
 
 ### 2.1 会话文件结构 (JSON)

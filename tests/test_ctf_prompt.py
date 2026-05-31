@@ -189,6 +189,55 @@ class TestCustomPromptParameter:
         assert "# Old CTF" not in profile_content
         assert 'model = "gpt-5.1-codex-max"' in profile_content
 
+    def test_codex_installer_can_replace_builtin_instructions_with_prompt_file(self, tmp_path, monkeypatch):
+        from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
+        from codex_session_patcher.ctf_config.status import check_ctf_status
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        installer = CTFConfigInstaller()
+        success, message = installer.install(custom_prompt="# Replace CTF", injection_mode="replace")
+
+        assert success, message
+        profile_config = tmp_path / ".codex" / "ctf.config.toml"
+        profile_content = profile_config.read_text(encoding="utf-8")
+        assert 'developer_instructions' not in profile_content
+        assert 'model_instructions_file = "~/.codex/prompts/ctf_optimized.md"' in profile_content
+        assert (tmp_path / ".codex" / "prompts" / "ctf_optimized.md").read_text(encoding="utf-8") == "# Replace CTF"
+
+        status = check_ctf_status()
+        assert status.installed is True
+        assert status.injection_mode == "replace"
+        assert status.prompt_path == str(tmp_path / ".codex" / "prompts" / "ctf_optimized.md")
+
+    def test_codex_installer_switches_replace_profile_back_to_append(self, tmp_path, monkeypatch):
+        from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        installer = CTFConfigInstaller()
+        success, message = installer.install(custom_prompt="# Replace CTF", injection_mode="replace")
+        assert success, message
+
+        success, message = installer.install(custom_prompt="# Append CTF", injection_mode="append")
+        assert success, message
+        profile_content = (tmp_path / ".codex" / "ctf.config.toml").read_text(encoding="utf-8")
+        assert 'developer_instructions = """' in profile_content
+        assert "# Append CTF" in profile_content
+        assert 'model_instructions_file' not in profile_content
+
+    def test_codex_append_status_reports_prompt_file_written_by_installer(self, tmp_path, monkeypatch):
+        from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
+        from codex_session_patcher.ctf_config.status import check_ctf_status
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        installer = CTFConfigInstaller()
+        success, message = installer.install(custom_prompt="# Append CTF", injection_mode="append")
+
+        assert success, message
+        status = check_ctf_status()
+        assert status.injection_mode == "append"
+        assert status.prompt_path == str(tmp_path / ".codex" / "prompts" / "ctf_optimized.md")
+        assert status.prompt_exists is True
+
     def test_codex_installer_uninstall_removes_v2_profile_and_legacy_entries(self, tmp_path, monkeypatch):
         from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
 
@@ -254,8 +303,33 @@ class TestCustomPromptParameter:
         assert status.config_exists is True
         assert status.profile_available is True
         assert status.config_path == str(profile_config)
-        assert status.prompt_path is None
+        assert status.prompt_path == str(prompt_path)
         assert status.prompt_exists is True
+
+    def test_codex_status_ignores_commented_instruction_keys(self, tmp_path, monkeypatch):
+        from codex_session_patcher.ctf_config.status import check_ctf_status
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        codex_dir = tmp_path / ".codex"
+        prompts_dir = codex_dir / "prompts"
+        prompts_dir.mkdir(parents=True)
+        prompt_path = prompts_dir / "ctf_optimized.md"
+        prompt_path.write_text("# Replace CTF", encoding="utf-8")
+        profile_config = codex_dir / "ctf.config.toml"
+        profile_config.write_text(
+            '\n'.join([
+                '# developer_instructions = "old"',
+                'model_instructions_file = "~/.codex/prompts/ctf_optimized.md"',
+                '',
+            ]),
+            encoding="utf-8",
+        )
+
+        status = check_ctf_status()
+
+        assert status.installed is True
+        assert status.injection_mode == "replace"
+        assert status.prompt_path == str(prompt_path)
 
     def test_codex_global_install_cleans_legacy_profile_entries(self, tmp_path, monkeypatch):
         from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
@@ -300,6 +374,87 @@ class TestCustomPromptParameter:
         assert 'model_instructions_file' not in cleaned_base
         assert 'developer_instructions = """' in cleaned_base
         assert 'CTF' in cleaned_base
+
+    def test_codex_global_install_can_replace_builtin_instructions_with_prompt_file(self, tmp_path, monkeypatch):
+        from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
+        from codex_session_patcher.ctf_config.status import GLOBAL_MARKER, check_ctf_status
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        installer = CTFConfigInstaller()
+        success, message = installer.install_global(injection_mode="replace")
+
+        assert success, message
+        base_config = tmp_path / ".codex" / "config.toml"
+        config_content = base_config.read_text(encoding="utf-8")
+        assert GLOBAL_MARKER in config_content
+        assert 'developer_instructions' not in config_content
+        assert 'model_instructions_file = "~/.codex/prompts/ctf_optimized.md"' in config_content
+
+        status = check_ctf_status()
+        assert status.global_installed is True
+        assert status.global_injection_mode == "replace"
+
+    def test_codex_global_install_switches_replace_back_to_append(self, tmp_path, monkeypatch):
+        from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        installer = CTFConfigInstaller()
+        success, message = installer.install_global(injection_mode="replace")
+        assert success, message
+
+        success, message = installer.install_global(injection_mode="append")
+        assert success, message
+        config_content = (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8")
+        assert 'developer_instructions = """' in config_content
+        assert 'model_instructions_file' not in config_content
+
+    def test_codex_global_install_refuses_unmanaged_developer_instructions(self, tmp_path, monkeypatch):
+        from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
+        from codex_session_patcher.ctf_config.status import GLOBAL_MARKER
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        codex_dir = tmp_path / ".codex"
+        codex_dir.mkdir()
+        base_config = codex_dir / "config.toml"
+        original = '\n'.join([
+            'developer_instructions = "existing"',
+            '',
+            '[features]',
+            'guardian_approval = false',
+            '',
+        ])
+        base_config.write_text(original, encoding="utf-8")
+
+        installer = CTFConfigInstaller()
+        success, message = installer.install_global(injection_mode="append")
+
+        assert success is False
+        assert "顶层已有 developer_instructions" in message
+        assert base_config.read_text(encoding="utf-8") == original
+        assert GLOBAL_MARKER not in base_config.read_text(encoding="utf-8")
+
+    def test_codex_global_install_refuses_unmanaged_model_instructions_file(self, tmp_path, monkeypatch):
+        from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        codex_dir = tmp_path / ".codex"
+        codex_dir.mkdir()
+        base_config = codex_dir / "config.toml"
+        original = '\n'.join([
+            'model_instructions_file = "~/.codex/prompts/existing.md"',
+            '',
+            '[features]',
+            'guardian_approval = false',
+            '',
+        ])
+        base_config.write_text(original, encoding="utf-8")
+
+        installer = CTFConfigInstaller()
+        success, message = installer.install_global(injection_mode="replace")
+
+        assert success is False
+        assert "顶层已有 model_instructions_file" in message
+        assert base_config.read_text(encoding="utf-8") == original
 
     def test_codex_global_uninstall_removes_managed_developer_instructions_block(self, tmp_path, monkeypatch):
         from codex_session_patcher.ctf_config.installer import CTFConfigInstaller

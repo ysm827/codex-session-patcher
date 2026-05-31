@@ -24,6 +24,7 @@ export default {
     disabled: 'Disabled',
     warning: 'Warning',
     info: 'Info',
+    version: 'Current version',
   },
 
   // Navigation
@@ -137,6 +138,10 @@ export default {
     aiRewriteBtn: 'AI Rewrite',
     editPromptShared: 'CTF Prompt Template',
     ctfTemplateDesc: 'Select a prompt template to inject. The template is written to config when Profile or Global mode is enabled. After switching templates, click Save and re-enable to apply.',
+    codexInjectionMode: 'Codex injection',
+    codexInjectionAppend: 'Append injection (developer_instructions)',
+    codexInjectionReplace: 'Replace system prompt (model_instructions)',
+    codexInjectionReplaceWarning: 'Replace mode takes over Codex built-in instructions. Use it for strong CTF scenarios; append mode is safer for daily work.',
     targetPlatform: 'Target Platform',
     originalPrompt: 'Original Request',
     originalPromptPlaceholder: 'Enter a request that might be refused...',

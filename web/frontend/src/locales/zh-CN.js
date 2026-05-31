@@ -24,6 +24,7 @@ export default {
     disabled: '未启用',
     warning: '警告',
     info: '提示',
+    version: '当前版本',
   },
 
   // 导航
@@ -137,6 +138,10 @@ export default {
     aiRewriteBtn: 'AI 改写',
     editPromptShared: 'CTF 提示词模板',
     ctfTemplateDesc: '选择一个提示词模板作为注入内容，模板会在启用 Profile 或全局模式时写入配置。切换模板后需点击保存，再重新启用即可生效。',
+    codexInjectionMode: 'Codex 注入方式',
+    codexInjectionAppend: '追加注入(developer_instructions)',
+    codexInjectionReplace: '替换系统提示词(model_instructions)',
+    codexInjectionReplaceWarning: '替换模式会接管 Codex 系统提示词，适合强 CTF 场景；日常建议使用追加注入。',
     targetPlatform: '目标平台',
     originalPrompt: '原始请求',
     originalPromptPlaceholder: '输入可能被拒绝的请求...',

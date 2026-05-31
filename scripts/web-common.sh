@@ -7,6 +7,25 @@ FRONTEND_DIST_DIR="${FRONTEND_DIST_DIR:-$FRONTEND_DIR/dist}"
 MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=8
 
+web_is_windows_shell() {
+    local kernel
+
+    kernel="$(uname -s 2>/dev/null || true)"
+    case "$kernel" in
+        MINGW*|MSYS*|CYGWIN*|Windows_NT*) return 0 ;;
+    esac
+
+    [ "${OS:-}" = "Windows_NT" ]
+}
+
+web_enable_windows_python_utf8() {
+    if web_is_windows_shell; then
+        export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
+    fi
+}
+
+web_enable_windows_python_utf8
+
 web_list_python_candidates() {
     {
         if [ -n "${WEB_PYTHON_BIN:-}" ]; then
@@ -51,6 +70,9 @@ web_py_launcher_path() {
     if [ ! -f "$wrapper_path" ]; then
         cat > "$wrapper_path" <<'EOF'
 #!/bin/sh
+case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*|Windows_NT*) export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}" ;;
+esac
 exec py -3 "$@"
 EOF
         chmod +x "$wrapper_path"

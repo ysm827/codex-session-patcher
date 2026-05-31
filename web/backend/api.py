@@ -22,7 +22,7 @@ from .schemas import (
     PatchResponse, Settings, ChangeDetail, ChangeType, WSMessage,
     AIRewriteResponse, PatchRequest, BackupInfo, RestoreResponse, DiffItem,
     CTFStatusResponse, CTFInstallResponse, PromptRewriteRequest, PromptRewriteResponse,
-    ConversationTurn,
+    ConversationTurn, CTFInstallRequest,
 )
 
 from codex_session_patcher.core import (
@@ -38,6 +38,7 @@ from codex_session_patcher.core import (
 )
 from codex_session_patcher.core.patcher import clean_session_jsonl, save_session_jsonl
 from codex_session_patcher.core.sqlite_adapter import OpenCodeDBAdapter, DEFAULT_OPENCODE_DB
+from codex_session_patcher import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,12 @@ DEFAULT_SESSION_DIR = os.path.expanduser("~/.codex/sessions/")
 DEFAULT_CLAUDE_SESSION_DIR = os.path.expanduser("~/.claude/projects/")
 DEFAULT_MEMORY_FILE = os.path.expanduser("~/.codex/memories/MEMORY.md")
 DEFAULT_CONFIG_FILE = os.path.expanduser("~/.codex-patcher/config.json")
+
+
+@router.get("/version")
+async def get_version():
+    """返回当前应用版本。"""
+    return {"version": __version__}
 
 
 # ─── WebSocket 连接管理 ──────────────────────────────────────────────────────
@@ -362,8 +369,11 @@ def preview_session(file_path: str, mock_response: str = MOCK_RESPONSE,
         refusal_lines.add(idx)
         if msg.get('type') == 'event_msg':
             # 冗余副本：挂到最近的 primary 下
-            if primary_order:
+            if primary_order and parsed_lines[primary_order[-1]].get('type') != 'event_msg':
                 refusal_groups[primary_order[-1]].append(idx)
+            else:
+                refusal_groups[idx] = []
+                primary_order.append(idx)
         else:
             refusal_groups[idx] = []
             primary_order.append(idx)
@@ -995,6 +1005,8 @@ async def _build_ctf_status_response() -> CTFStatusResponse:
         prompt_exists=status.prompt_exists,
         profile_available=status.profile_available,
         global_installed=status.global_installed,
+        injection_mode=status.injection_mode,
+        global_injection_mode=status.global_injection_mode,
         config_path=status.config_path,
         prompt_path=status.prompt_path,
         claude_installed=status.claude_installed,
@@ -1017,11 +1029,12 @@ async def get_ctf_status():
 
 
 @router.post("/ctf/install", response_model=CTFInstallResponse)
-async def install_ctf_config():
+async def install_ctf_config(body: Optional[CTFInstallRequest] = None):
     """安装 CTF 配置"""
     from codex_session_patcher.ctf_config import CTFConfigInstaller
     installer = CTFConfigInstaller()
-    success, message = installer.install()
+    injection_mode = body.injection_mode if body else "append"
+    success, message = installer.install(injection_mode=injection_mode)
 
     await manager.broadcast(WSMessage(
         type="log",
@@ -1057,11 +1070,12 @@ async def uninstall_ctf_config():
 
 
 @router.post("/ctf/global/install", response_model=CTFInstallResponse)
-async def install_ctf_global():
+async def install_ctf_global(body: Optional[CTFInstallRequest] = None):
     """启用 CTF 全局模式"""
     from codex_session_patcher.ctf_config import CTFConfigInstaller
     installer = CTFConfigInstaller()
-    success, message = installer.install_global()
+    injection_mode = body.injection_mode if body else "append"
+    success, message = installer.install_global(injection_mode=injection_mode)
 
     await manager.broadcast(WSMessage(
         type="log",
@@ -1304,16 +1318,22 @@ def _read_codex_developer_instructions() -> str | None:
     return None
 
 
-def _sync_codex_developer_instructions(prompt: str):
-    """同步已启用 Codex CTF 配置中的 developer_instructions。"""
+def _sync_codex_prompt_config(prompt: str, prompt_file: Optional[str] = None):
+    """同步已启用 Codex CTF 配置中的提示词配置。"""
     from codex_session_patcher.ctf_config import CTFConfigInstaller
     from codex_session_patcher.ctf_config import check_ctf_status
     installer = CTFConfigInstaller()
     status = check_ctf_status()
     if status.profile_available:
-        installer._update_config(prompt)
+        if status.injection_mode == "append":
+            installer._update_config(prompt, prompt_file, "append")
+        elif prompt_file:
+            installer._update_config(prompt, prompt_file, "replace")
     if status.global_installed:
-        installer._update_global_config(prompt)
+        if status.global_injection_mode == "append":
+            installer._update_global_config(prompt, prompt_file, "append")
+        elif prompt_file:
+            installer._update_global_config(prompt, prompt_file, "replace")
 
 
 def _codex_profile_available() -> bool:
@@ -1423,7 +1443,7 @@ async def save_ctf_prompt(tool: str, body: dict):
     if tool == 'codex' and _codex_ctf_config_active():
         if matched_file:
             prompt_path = _get_codex_prompt_path_for_file(matched_file)
-        _sync_codex_developer_instructions(prompt)
+        _sync_codex_prompt_config(prompt, matched_file)
         should_write_installed = bool(prompt_path)
 
     # 已安装：写入对应文件
@@ -1460,7 +1480,7 @@ async def reset_ctf_prompt(tool: str):
     if tool == 'codex' and _codex_ctf_config_active():
         from codex_session_patcher.ctf_config.installer import CTFConfigInstaller
         prompt_path = _get_codex_prompt_path_for_file(CTFConfigInstaller.DEFAULT_PROMPT_FILE)
-        _sync_codex_developer_instructions(default_prompt)
+        _sync_codex_prompt_config(default_prompt, CTFConfigInstaller.DEFAULT_PROMPT_FILE)
         should_write_installed = True
 
     # 已安装：更新文件为默认

@@ -50,6 +50,12 @@ def link_host_tool(fake_bin: Path, tool: str):
     (fake_bin / tool).symlink_to(tool_path)
 
 
+def write_fake_uname(fake_bin: Path, output: str = "MINGW64_NT-10.0"):
+    uname = fake_bin / "uname"
+    uname.write_text(f"#!/bin/sh\nprintf '%s\\n' {shlex.quote(output)}\n", encoding="utf-8")
+    uname.chmod(uname.stat().st_mode | stat.S_IXUSR)
+
+
 def find_non_loopback_ipv4() -> str | None:
     candidates: list[str] = []
 
@@ -632,6 +638,7 @@ def test_start_web_skips_node_requirement_when_frontend_assets_are_current(tmp_p
                 "#!/bin/sh",
                 'if [ \"$1\" = \"-m\" ] && [ \"$2\" = \"uvicorn\" ]; then',
                 "  echo fake-uvicorn",
+                '  echo "encoding=$PYTHONIOENCODING"',
                 "  exit 0",
                 "fi",
                 f'exec {shlex.quote(sys.executable)} \"$@\"',
@@ -641,6 +648,7 @@ def test_start_web_skips_node_requirement_when_frontend_assets_are_current(tmp_p
         encoding="utf-8",
     )
     fake_python.chmod(fake_python.stat().st_mode | stat.S_IXUSR)
+    write_fake_uname(fake_bin)
 
     result = subprocess.run(
         ["bash", str(scripts_dir / "start-web.sh")],
@@ -650,6 +658,7 @@ def test_start_web_skips_node_requirement_when_frontend_assets_are_current(tmp_p
             "PATH": f"{fake_bin}:/usr/bin:/bin",
             "WEB_STATE_DIR": str(state_dir),
             "WEB_PYTHON_IMPORT_CHECK": "import sys",
+            "PYTHONIOENCODING": "",
             "HOST": "127.0.0.1",
             "PORT": "0",
         },
@@ -662,6 +671,7 @@ def test_start_web_skips_node_requirement_when_frontend_assets_are_current(tmp_p
     assert "跳过前端依赖安装" in result.stdout
     assert "前端构建产物已是最新，跳过构建" in result.stdout
     assert "fake-uvicorn" in result.stdout
+    assert "encoding=utf-8" in result.stdout
 
 
 def test_start_web_skips_frontend_install_when_dist_is_current_without_node_modules(tmp_path: Path):
@@ -808,8 +818,10 @@ def test_install_script_creates_working_wrapper_with_py_launcher(tmp_path: Path)
     (package_dir / "cli.py").write_text(
         "\n".join(
             [
+                "import os",
                 "import sys",
                 "print('wrapper-ok', *sys.argv[1:])",
+                "print('encoding', os.environ.get('PYTHONIOENCODING'))",
                 "",
             ]
         ),
@@ -818,6 +830,7 @@ def test_install_script_creates_working_wrapper_with_py_launcher(tmp_path: Path)
 
     for tool in ("awk", "dirname"):
         link_host_tool(fake_bin, tool)
+    write_fake_uname(fake_bin)
 
     py_launcher = fake_bin / "py"
     py_launcher.write_text(
@@ -843,6 +856,7 @@ def test_install_script_creates_working_wrapper_with_py_launcher(tmp_path: Path)
             "HOME": str(home_dir),
             "WEB_STATE_DIR": str(state_dir),
             "PATH": f"{fake_bin}:/bin",
+            "PYTHONIOENCODING": "",
         },
         text=True,
         capture_output=True,
@@ -865,6 +879,7 @@ def test_install_script_creates_working_wrapper_with_py_launcher(tmp_path: Path)
             "HOME": str(home_dir),
             "WEB_STATE_DIR": str(state_dir),
             "PATH": f"{fake_bin}:/bin",
+            "PYTHONIOENCODING": "",
         },
         text=True,
         capture_output=True,
@@ -872,7 +887,7 @@ def test_install_script_creates_working_wrapper_with_py_launcher(tmp_path: Path)
     )
 
     assert wrapper_run.returncode == 0, wrapper_run.stderr
-    assert wrapper_run.stdout.strip() == "wrapper-ok abc"
+    assert wrapper_run.stdout.splitlines() == ["wrapper-ok abc", "encoding utf-8"]
 
 
 def test_install_script_wrapper_supports_spaces_in_project_path(tmp_path: Path):
