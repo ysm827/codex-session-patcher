@@ -1,6 +1,6 @@
 export const AD_FITS = new Set(["natural", "contain", "cover", "fill"]);
 export const BILLING_TYPES = new Set(["one_time", "yearly", "monthly", "weekly", "daily"]);
-export const DEFAULT_AD_WIDTH = "clamp(190px, 17vw, 320px)";
+export const DEFAULT_AD_WIDTH = "clamp(240px, 22vw, 420px)";
 export const DEFAULT_AD_MAX_HEIGHT = "72vh";
 export const DEFAULT_AD_BACKGROUND = "var(--color-bg-1)";
 export const RATIO_WARNING_THRESHOLD = 0.08;

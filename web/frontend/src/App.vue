@@ -166,7 +166,7 @@
           <div
             v-if="activeTab === 'enhance'"
             class="ad-layout"
-            :class="{ 'ad-layout-empty': !hasAdsForTab('enhance') }"
+            :class="getAdLayoutClass('enhance')"
             :style="getAdLayoutStyle('enhance')"
           >
             <AdSlot :slot="getAdSlot('enhance', 'left')" />
@@ -178,7 +178,7 @@
           <div
             v-if="activeTab === 'settings'"
             class="ad-layout"
-            :class="{ 'ad-layout-empty': !hasAdsForTab('settings') }"
+            :class="getAdLayoutClass('settings')"
             :style="getAdLayoutStyle('settings')"
           >
             <AdSlot :slot="getAdSlot('settings', 'left')" />
@@ -190,7 +190,7 @@
           <div
             v-if="activeTab === 'help'"
             class="ad-layout"
-            :class="{ 'ad-layout-empty': !hasAdsForTab('help') }"
+            :class="getAdLayoutClass('help')"
             :style="getAdLayoutStyle('help')"
           >
             <AdSlot :slot="getAdSlot('help', 'left')" />
@@ -202,7 +202,7 @@
           <div
             v-if="activeTab === 'cooperation'"
             class="ad-layout"
-            :class="{ 'ad-layout-empty': !hasAdsForTab('cooperation') }"
+            :class="getAdLayoutClass('cooperation')"
             :style="getAdLayoutStyle('cooperation')"
           >
             <AdSlot :slot="getAdSlot('cooperation', 'left')" />
@@ -245,7 +245,7 @@ import { api } from './services/api'
 const AD_TABS = ['enhance', 'settings', 'help', 'cooperation']
 const AD_POSITIONS = ['left', 'right']
 const AD_FITS = ['natural', 'contain', 'cover', 'fill']
-const DEFAULT_AD_WIDTH = 'clamp(190px, 17vw, 320px)'
+const DEFAULT_AD_WIDTH = 'clamp(240px, 22vw, 420px)'
 const DEFAULT_AD_MAX_HEIGHT = '72vh'
 const DEFAULT_AD_BACKGROUND = 'var(--color-bg-1)'
 const DEFAULT_AD_CONFIG_URL = 'https://leads.3jiezhiwai.com/api/sources/codex-session-patcher/ad-slots'
@@ -291,6 +291,17 @@ function getAdSlot(tab, position) {
 
 function hasAdsForTab(tab) {
   return AD_POSITIONS.some(position => Boolean(getAdSlot(tab, position)))
+}
+
+function getAdLayoutClass(tab) {
+  const hasLeft = Boolean(getAdSlot(tab, 'left'))
+  const hasRight = Boolean(getAdSlot(tab, 'right'))
+
+  return {
+    'ad-layout-empty': !hasLeft && !hasRight,
+    'ad-layout-left-only': hasLeft && !hasRight,
+    'ad-layout-right-only': !hasLeft && hasRight
+  }
 }
 
 function getAdLayoutStyle(tab) {
@@ -671,8 +682,18 @@ onUnmounted(() => {
   max-width: 960px;
 }
 
-.ad-layout-empty :deep(.ad-slot-frame) {
+.ad-layout-empty :deep(.ad-slot-frame),
+.ad-layout-left-only :deep(.ad-slot-frame-empty),
+.ad-layout-right-only :deep(.ad-slot-frame-empty) {
   display: none;
+}
+
+.ad-layout-left-only {
+  grid-template-columns: var(--ad-left-width) minmax(0, 1fr);
+}
+
+.ad-layout-right-only {
+  grid-template-columns: minmax(0, 1fr) var(--ad-right-width);
 }
 
 .ad-layout-main {
